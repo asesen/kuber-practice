@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-app-config
+  namespace: kuber-practice
+data:
+  config.json: |
+    {
+      "greeting": "Welcome to the custom app",
+      "log_level": "info"
+    }

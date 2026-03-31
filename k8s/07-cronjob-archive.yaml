@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: log-archiver
+  namespace: kuber-practice
+spec:
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: archiver
+              image: alpine:3.20
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/sh
+                - -ceu
+                - |
+                  apk add --no-cache curl tar >/dev/null
+                  mkdir -p /app/logs
+                  curl -fsS http://custom-app.kuber-practice.svc.cluster.local/logs > /app/logs/app.log || true
+                  ts="$(date +%s)"
+                  tar -czf "/tmp/app-logs-${ts}.tar.gz" /app/logs/
+                  ls -l /tmp
+              volumeMounts:
+                - name: logs
+                  mountPath: /app/logs
+          volumes:
+            - name: logs
+              emptyDir: {}

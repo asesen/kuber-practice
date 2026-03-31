@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: archive-store
+  namespace: kuber-practice
+spec:
+  clusterIP: None
+  selector:
+    app: archive-store
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: archive-store
+  namespace: kuber-practice
+spec:
+  serviceName: archive-store
+  replicas: 1
+  selector:
+    matchLabels:
+      app: archive-store
+  template:
+    metadata:
+      labels:
+        app: archive-store
+    spec:
+      containers:
+        - name: server
+          image: nginx:1.27-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/nginx/html
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
