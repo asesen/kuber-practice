@@ -17,14 +17,7 @@ docker build -t "${IMAGE}" ./app
 if command -v kind >/dev/null 2>&1; then
   if kind get clusters >/dev/null 2>&1; then
     echo "Loading image into kind..."
-    kind load docker-image "${IMAGE}" >/dev/null 2>&1 || true
-  fi
-fi
-
-if command -v minikube >/dev/null 2>&1; then
-  if minikube status >/dev/null 2>&1; then
-    echo "Loading image into minikube..."
-    minikube image load "${IMAGE}" >/dev/null 2>&1 || true
+    kind load docker-image --name lab "${IMAGE}" >/dev/null 2>&1
   fi
 fi
 
