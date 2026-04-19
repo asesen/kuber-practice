@@ -7,7 +7,7 @@ spec:
   host: app-service
   trafficPolicy:
     loadBalancer:
-      simple: LEAST_REQUEST
+      simple: LEAST_CONN
     connectionPool:
       tcp:
         maxConnections: 3
