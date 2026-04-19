@@ -1,0 +1,66 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: kuber-routes
+  namespace: kuber-practice
+spec:
+  hosts:
+    - "*"
+  gateways:
+    - kuber-gateway
+  http:
+    # POST /log: задержка 2s, общий таймаут 1s (запрос падает по таймауту), до 2 повторов
+    - name: post-log
+      match:
+        - uri:
+            exact: /log
+          method:
+            exact: POST
+      fault:
+        delay:
+          percentage: 100
+          fixedDelay: 2s
+      timeout: 1s
+      retries:
+        attempts: 2
+        retryOn: 5xx,gateway-error,reset,connect-failure,refused-stream
+      route:
+        - destination:
+            host: app-service
+            port:
+              number: 80
+    - name: get-root
+      match:
+        - uri:
+            exact: /
+      route:
+        - destination:
+            host: app-service
+            port:
+              number: 80
+    - name: get-status
+      match:
+        - uri:
+            exact: /status
+      route:
+        - destination:
+            host: app-service
+            port:
+              number: 80
+    - name: get-logs
+      match:
+        - uri:
+            exact: /logs
+      route:
+        - destination:
+            host: app-service
+            port:
+              number: 80
+    - name: not-found
+      match:
+        - uri:
+            prefix: /
+      directResponse:
+        status: 404
+        body:
+          string: "not found\n"

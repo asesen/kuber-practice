@@ -21,7 +21,7 @@ spec:
                 - |
                   apk add --no-cache curl tar >/dev/null
                   mkdir -p /app/logs
-                  curl -fsS http://custom-app.kuber-practice.svc.cluster.local/logs > /app/logs/app.log || true
+                  curl -fsS http://app-service.kuber-practice.svc.cluster.local/logs > /app/logs/app.log || true
                   ts="$(date +%s)"
                   tar -czf "/tmp/app-logs-${ts}.tar.gz" /app/logs/
                   ls -l /tmp
