@@ -79,11 +79,13 @@ echo "Restarting workloads (sidecars / mesh)..."
 kubectl -n "${NS}" rollout restart deploy/custom-app || true
 kubectl -n "${NS}" rollout restart ds/log-agent || true
 kubectl -n "${NS}" rollout restart sts/archive-store || true
+kubectl -n monitoring rollout restart deploy/prometheus || true
 
 echo "Waiting for readiness..."
 kubectl -n "${NS}" rollout status deploy/custom-app --timeout=180s
 kubectl -n "${NS}" rollout status ds/log-agent --timeout=180s
 kubectl -n "${NS}" rollout status sts/archive-store --timeout=180s
+kubectl -n monitoring rollout status deploy/prometheus --timeout=180s
 
 echo "Done."
 echo
@@ -93,4 +95,7 @@ echo "  kubectl -n istio-system port-forward svc/istio-ingressgateway 8080:80"
 echo "  curl http://127.0.0.1:8080/"
 echo "  curl http://127.0.0.1:8080/status"
 echo "  curl -X POST http://127.0.0.1:8080/log -H 'Content-Type: application/json' -d '{\"message\":\"test\"}'"
+echo "  curl http://127.0.0.1:8080/metrics"
+echo "  kubectl -n monitoring port-forward svc/prometheus 9090:9090"
+echo "  curl http://127.0.0.1:9090/graph"
 echo "  curl http://127.0.0.1:8080/logs"

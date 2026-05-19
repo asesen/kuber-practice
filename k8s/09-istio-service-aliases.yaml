@@ -11,6 +11,9 @@ spec:
     - name: http
       port: 80
       targetPort: http
+    - name: metrics
+      port: 9112
+      targetPort: http
 ---
 apiVersion: v1
 kind: Service

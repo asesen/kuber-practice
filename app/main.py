@@ -1,8 +1,11 @@
 import json
 import os
 import socket
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+from prometheus_client import Counter, Histogram, CONTENT_TYPE_LATEST, generate_latest
 
 
 def _load_config() -> dict:
@@ -25,6 +28,25 @@ def _load_config() -> dict:
 
 LOG_DIR = Path(os.environ.get("APP_LOG_DIR", "/app/logs"))
 LOG_FILE = LOG_DIR / "app.log"
+
+REQUEST_COUNT = Counter(
+    "custom_app_requests_total",
+    "Total number of HTTP requests handled by the app",
+    ["endpoint", "method", "status"],
+)
+LOG_SUCCESS_COUNT = Counter(
+    "custom_app_log_success_total",
+    "Successful /log requests",
+)
+LOG_FAILURE_COUNT = Counter(
+    "custom_app_log_failure_total",
+    "Failed /log requests",
+)
+REQUEST_DURATION_SECONDS = Histogram(
+    "custom_app_request_duration_seconds",
+    "Request duration in seconds",
+    ["endpoint", "method", "status"],
+)
 
 
 def _append_log_line(message: str) -> None:
@@ -55,6 +77,16 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _record_metrics(self, endpoint: str, status: int) -> None:
+        duration = time.monotonic() - getattr(self, "_start_time", time.monotonic())
+        REQUEST_COUNT.labels(endpoint=endpoint, method=self.command, status=str(status)).inc()
+        REQUEST_DURATION_SECONDS.labels(endpoint=endpoint, method=self.command, status=str(status)).observe(duration)
+        if endpoint == "/log":
+            if status == 200:
+                LOG_SUCCESS_COUNT.inc()
+            else:
+                LOG_FAILURE_COUNT.inc()
+
     def _read_json_body(self) -> dict:
         length = int(self.headers.get("Content-Length", "0") or "0")
         raw = self.rfile.read(length) if length > 0 else b""
@@ -63,32 +95,60 @@ class Handler(BaseHTTPRequestHandler):
         return json.loads(raw.decode("utf-8"))
 
     def do_GET(self):  # noqa: N802
+        self._start_time = time.monotonic()
+        if self.path == "/metrics":
+            data = generate_latest()
+            self.send_response(200)
+            self.send_header("Content-Type", CONTENT_TYPE_LATEST)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
         if self.path == "/":
             cfg = _load_config()
-            return self._send_text(cfg["greeting"])
+            self._send_text(cfg["greeting"])
+            self._record_metrics("/", 200)
+            return
         if self.path == "/status":
-            return self._send_json({"status": "ok"})
+            self._send_json({"status": "ok"})
+            self._record_metrics("/status", 200)
+            return
         if self.path == "/logs":
             if not LOG_FILE.exists():
-                return self._send_text("", status=200)
-            return self._send_text(LOG_FILE.read_text(encoding="utf-8"), status=200)
-        return self._send_json({"error": "not found"}, status=404)
+                self._send_text("", status=200)
+                self._record_metrics("/logs", 200)
+                return
+            self._send_text(LOG_FILE.read_text(encoding="utf-8"), status=200)
+            self._record_metrics("/logs", 200)
+            return
+        self._send_json({"error": "not found"}, status=404)
+        self._record_metrics(self.path, 404)
 
     def do_POST(self):  # noqa: N802
+        self._start_time = time.monotonic()
         if self.path != "/log":
-            return self._send_json({"error": "not found"}, status=404)
+            self._send_json({"error": "not found"}, status=404)
+            self._record_metrics(self.path, 404)
+            return
 
         try:
             body = self._read_json_body()
         except Exception:
-            return self._send_json({"error": "invalid json"}, status=400)
+            self._send_json({"error": "invalid json"}, status=400)
+            self._record_metrics("/log", 400)
+            return
 
         msg = body.get("message")
         if not isinstance(msg, str) or not msg.strip():
-            return self._send_json({"error": "message must be non-empty string"}, status=400)
+            self._send_json({"error": "message must be non-empty string"}, status=400)
+            self._record_metrics("/log", 400)
+            return
 
         _append_log_line(msg)
-        return self._send_json({"written": True})
+        self._send_json({"written": True})
+        self._record_metrics("/log", 200)
+        return
 
     def log_message(self, format, *args):  # noqa: A002
         cfg = _load_config()

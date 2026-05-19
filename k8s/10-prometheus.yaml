@@ -1,0 +1,146 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/proxy", "services", "endpoints", "pods", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets", "deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    scrape_configs:
+      - job_name: custom-app
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: ["kuber-practice"]
+        relabel_configs:
+          - source_labels: ["__meta_kubernetes_service_name"]
+            regex: custom-app
+            action: keep
+          - source_labels: ["__meta_kubernetes_endpoint_port_name"]
+            regex: metrics
+            action: keep
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+      - job_name: custom-app-envoy
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ["kuber-practice"]
+        relabel_configs:
+          - source_labels: ["__meta_kubernetes_pod_label_app"]
+            regex: custom-app
+            action: keep
+          - source_labels: ["__meta_kubernetes_pod_container_port_number"]
+            regex: "15090"
+            action: keep
+          - target_label: __metrics_path__
+            replacement: /stats/prometheus
+      - job_name: istio-ingressgateway
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: ["istio-system"]
+        relabel_configs:
+          - source_labels: ["__meta_kubernetes_service_name"]
+            regex: istio-ingressgateway
+            action: keep
+          - source_labels: ["__meta_kubernetes_endpoint_port_name"]
+            regex: prometheus
+            action: keep
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.56.0
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--web.enable-lifecycle"
+            - "--storage.tsdb.retention.time=6h"
+          ports:
+            - name: web
+              containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: data
+              mountPath: /prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  type: ClusterIP
+  selector:
+    app: prometheus
+  ports:
+    - name: web
+      port: 9090
+      targetPort: 9090
