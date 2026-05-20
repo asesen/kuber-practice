@@ -33,9 +33,37 @@ curl -i http://127.0.0.1:8080/
 curl -i http://127.0.0.1:8080/status
 curl -i -X POST http://127.0.0.1:8080/log -H 'Content-Type: application/json' -d '{"message":"hello"}'
 curl -i http://127.0.0.1:8080/logs
+curl -i http://127.0.0.1:8080/metrics
 ```
 
 Далее предполагаем, что порт прокинут
+
+### Проверка Prometheus
+
+```bash
+kubectl -n monitoring port-forward svc/prometheus 9090:9090
+curl -i http://127.0.0.1:9090/graph
+```
+
+В Prometheus должны быть доступны метрики приложения и Istio, например `custom_app_requests_total` и `istio_requests_total`.
+
+### Проверка задания 3
+
+```bash
+# Перенаправить трафик к приложению и к Prometheus
+kubectl -n kuber-practice port-forward svc/custom-app 8080:80 &
+kubectl -n monitoring port-forward svc/prometheus 9090:9090 &
+
+# Проверить, что приложение экспортирует метрики
+curl -i http://127.0.0.1:8080/metrics | head -n 20
+
+# Сгенерировать трафик и проверить, что метрики обновляются
+curl -s -X POST http://127.0.0.1:8080/log -H 'Content-Type: application/json' -d '{"message":"test"}'
+curl -s http://127.0.0.1:8080/metrics | grep -E 'custom_app_requests_total|custom_app_log_success_total|custom_app_log_failure_total|custom_app_request_duration_seconds'
+
+# Проверить в Prometheus, что метрики доступны через запрос
+curl -s 'http://127.0.0.1:9090/api/v1/query?query=custom_app_requests_total' | jq .
+```
 
 ### Проверка балансировки Service между pod'ами
 
